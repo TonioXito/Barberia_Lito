@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // settings/config se lee ANTES del login para:
+    //  - validar la contraseña de acceso única
+    //  - conocer el estado de suscripción
+    // Solo los usuarios con sesión (anónima de Firebase) pueden modificarlo.
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // El resto de colecciones (productos, ventas, clientes, movimientos,
+    // abonos) solo se puede leer/escribir con una sesión iniciada.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
