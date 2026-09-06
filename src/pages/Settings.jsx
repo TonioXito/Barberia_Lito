@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Lock, Loader2, Save, ShieldCheck } from "lucide-react";
+import { Lock, Loader2, Save, ShieldCheck, CreditCard } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { updateSettings, sha256, getSubStatus } from "../firebase/services";
 import { useToast } from "../components/ui/Toast";
@@ -8,6 +8,7 @@ import { Card, CardHeader } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { fmtDate } from "../lib/format";
+import { PAYMENT_METHODS, DEFAULT_PAYMENT_CONFIG } from "../lib/constants";
 
 export function SettingsPage() {
   const { settings, update } = useSettings();
@@ -27,6 +28,48 @@ export function SettingsPage() {
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
   const [savingPass, setSavingPass] = useState(false);
+
+  const [pmConfig, setPmConfig] = useState(() =>
+    PAYMENT_METHODS.reduce((acc, m) => {
+      acc[m.value] = { ...(DEFAULT_PAYMENT_CONFIG[m.value] || { active: true, reference: false }) };
+      return acc;
+    }, {}),
+  );
+  const [savingPm, setSavingPm] = useState(false);
+
+  useEffect(() => {
+    const stored = settings?.paymentMethods;
+    if (!stored) return;
+    const merged = {};
+    for (const m of PAYMENT_METHODS) {
+      const c = stored[m.value];
+      merged[m.value] = {
+        active: c ? c.active !== false : DEFAULT_PAYMENT_CONFIG[m.value]?.active !== false,
+        reference: c ? !!c.reference : !!DEFAULT_PAYMENT_CONFIG[m.value]?.reference,
+      };
+    }
+    setPmConfig(merged);
+  }, [settings?.paymentMethods]);
+
+  function togglePmActive(m) {
+    setPmConfig((prev) => ({ ...prev, [m.value]: { ...prev[m.value], active: !prev[m.value].active } }));
+  }
+
+  function togglePmReference(m) {
+    setPmConfig((prev) => ({ ...prev, [m.value]: { ...prev[m.value], reference: !prev[m.value].reference } }));
+  }
+
+  async function savePaymentMethods() {
+    setSavingPm(true);
+    try {
+      await updateSettings({ paymentMethods: pmConfig });
+      toast.success("Métodos de pago guardados");
+    } catch (e) {
+      toast.error(e.message || "Error al guardar");
+    } finally {
+      setSavingPm(false);
+    }
+  }
 
   const subStatus = sub ? getSubStatus(sub) : { ok: false, daysLeft: 0, expired: false };
 
@@ -180,6 +223,55 @@ export function SettingsPage() {
           </div>
         </Card>
 
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title="Métodos de pago"
+            subtitle="Elige cuáles se usan al vender y cuáles piden N° de referencia"
+          />
+          <div className="space-y-2 px-5 pb-5">
+            {PAYMENT_METHODS.map((m) => (
+              <div
+                key={m.value}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2"
+              >
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
+                    <CreditCard size={15} className="text-gray-400" />
+                    {m.label}
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {pmConfig[m.value]?.active ? "Activo" : "Desactivado"}
+                    {pmConfig[m.value]?.reference ? " · pide N° de referencia" : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {m.value !== "EFECTIVO" && m.value !== "CREDITO" && (
+                    <MethodToggle
+                      on={!!pmConfig[m.value]?.reference}
+                      onClick={() => togglePmReference(m)}
+                      onLabel="Referencia"
+                      offLabel="Referencia"
+                      activeClass="bg-emerald-100 text-emerald-700"
+                    />
+                  )}
+                  <MethodToggle
+                    on={pmConfig[m.value]?.active !== false}
+                    onClick={() => togglePmActive(m)}
+                    onLabel="Activo"
+                    offLabel="Inactivo"
+                    activeClass="bg-emerald-100 text-emerald-700"
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-end pt-1">
+              <Button onClick={savePaymentMethods} disabled={savingPm} variant="secondary">
+                {savingPm ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Guardar métodos
+              </Button>
+            </div>
+          </div>
+        </Card>
+
         <Card>
           <CardHeader title="Contraseña de acceso" subtitle="Única contraseña para entrar a la aplicación" />
           <form onSubmit={changePassword} className="space-y-3 px-5 pb-5">
@@ -260,5 +352,18 @@ export function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function MethodToggle({ on, onClick, onLabel, offLabel, activeClass }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+        on ? activeClass : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+      }`}
+    >
+      {on ? onLabel : offLabel}
+    </button>
   );
 }

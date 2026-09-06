@@ -22,6 +22,24 @@ export const PAYMENT_METHOD_MAP = Object.fromEntries(
   PAYMENT_METHODS.map((p) => [p.value, p.label]),
 );
 
+export const DEFAULT_PAYMENT_CONFIG = {
+  EFECTIVO: { active: true, reference: false },
+  PUNTO: { active: true, reference: false },
+  PAGO_MOVIL: { active: true, reference: true },
+  TRANSFERENCIA: { active: true, reference: true },
+  CREDITO: { active: true, reference: false },
+};
+
+export function isPaymentMethodActive(settings, method) {
+  const cfg = settings?.paymentMethods?.[method];
+  return cfg ? cfg.active !== false : DEFAULT_PAYMENT_CONFIG[method]?.active !== false;
+}
+
+export function methodUsesReference(settings, method) {
+  const cfg = settings?.paymentMethods?.[method];
+  return cfg ? !!cfg.reference : !!DEFAULT_PAYMENT_CONFIG[method]?.reference;
+}
+
 export const CATEGORIES = [
   { value: "RES", label: "Res" },
   { value: "POLLO", label: "Pollo" },

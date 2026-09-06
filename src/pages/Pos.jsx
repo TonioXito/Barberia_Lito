@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import {
   Search,
   Plus,
@@ -12,7 +12,7 @@ import {
 import { useProducts, useClients } from "../hooks/useData";
 import { useSettings } from "../hooks/useSettings";
 import { addSale, addClient } from "../firebase/services";
-import { CATEGORIES, CATEGORY_MAP, PAYMENT_METHODS, UNIT_MAP } from "../lib/constants";
+import { CATEGORIES, CATEGORY_MAP, PAYMENT_METHODS, UNIT_MAP, isPaymentMethodActive, methodUsesReference } from "../lib/constants";
 import { fmtUSD, fmtBs, fmtQty, round } from "../lib/format";
 import { useToast } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
@@ -41,6 +41,19 @@ export function PosPage() {
   const [saving, setSaving] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [lastSale, setLastSale] = useState(null);
+
+  const activeMethods = useMemo(
+    () => PAYMENT_METHODS.filter((m) => isPaymentMethodActive(settings, m.value)),
+    [settings],
+  );
+  const needsRef = methodUsesReference(settings, paymentMethod);
+
+  useEffect(() => {
+    if (!isPaymentMethodActive(settings, paymentMethod)) {
+      setPaymentMethod("EFECTIVO");
+      setTransferRef("");
+    }
+  }, [settings?.paymentMethods, paymentMethod]);
 
   const activeProducts = useMemo(
     () =>
@@ -108,8 +121,8 @@ export function PosPage() {
       setClientModal(true);
       return;
     }
-    if (paymentMethod === "TRANSFERENCIA" && !String(transferRef || "").trim()) {
-      toast.error("Agrega el N° de referencia de la transferencia");
+    if (needsRef && !String(transferRef || "").trim()) {
+      toast.error("Agrega el N° de referencia");
       return;
     }
     setSaving(true);
@@ -121,6 +134,7 @@ export function PosPage() {
         exchangeRate: rate,
         discountUsd: totals.discount,
         transferRef,
+        usesReference: needsRef,
       });
       setLastSale(sale);
       setTicket({
@@ -348,7 +362,9 @@ export function PosPage() {
               <div>
                 <p className="mb-1 text-xs font-medium text-gray-500">Método de pago</p>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {PAYMENT_METHODS.filter((m) => m.value !== "CREDITO").map((m) => (
+                  {PAYMENT_METHODS.filter(
+                    (m) => m.value !== "CREDITO" && isPaymentMethodActive(settings, m.value),
+                  ).map((m) => (
                     <PaymentButton
                       key={m.value}
                       label={m.label}
@@ -357,14 +373,16 @@ export function PosPage() {
                     />
                   ))}
                 </div>
-                <div className="mt-1.5">
-                  <PaymentButton
-                    label="Crédito"
-                    active={paymentMethod === "CREDITO"}
-                    onClick={() => setPaymentMethod("CREDITO")}
-                    extra={client ? `→ ${client.name.split(" ")[0]}` : ""}
-                  />
-                </div>
+                {isPaymentMethodActive(settings, "CREDITO") && (
+                  <div className="mt-1.5">
+                    <PaymentButton
+                      label="Crédito"
+                      active={paymentMethod === "CREDITO"}
+                      onClick={() => setPaymentMethod("CREDITO")}
+                      extra={client ? `→ ${client.name.split(" ")[0]}` : ""}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -380,10 +398,10 @@ export function PosPage() {
                 />
               </div>
 
-              {paymentMethod === "TRANSFERENCIA" && (
+              {needsRef && (
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-500">
-                    N° de referencia de la transferencia
+                    N° de referencia
                   </label>
                   <input
                     type="text"

@@ -16,6 +16,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./config";
+import { DEFAULT_PAYMENT_CONFIG } from "../lib/constants";
 
 const now = () => serverTimestamp();
 
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS = {
   telefono: "",
   nombre: "",
   passwordHash: "",
+  paymentMethods: { ...DEFAULT_PAYMENT_CONFIG },
   subscription: {
     active: false,
     expiresAt: null,
@@ -222,7 +224,7 @@ export async function deleteClientDoc(id) {
 
 let ticketCounter = 1000;
 
-export async function addSale({ client, items, paymentMethod, exchangeRate, discountUsd, note, transferRef }) {
+export async function addSale({ client, items, paymentMethod, exchangeRate, discountUsd, note, transferRef, usesReference }) {
   const productsRefById = items.map((it) => ({ it, ref: doc(db, "products", it.productId) }));
 
   const ticketNumber = await getNextTicketNumber();
@@ -284,8 +286,8 @@ export async function addSale({ client, items, paymentMethod, exchangeRate, disc
       isCredit: paymentMethod === "CREDITO",
       creditStatus: paymentMethod === "CREDITO" ? "PENDIENTE" : "CONTADO",
       balanceUsd: roundMoney(balanceUsd),
-      transferRef: paymentMethod === "TRANSFERENCIA" ? String(transferRef || "").trim() : "",
-      reconciled: paymentMethod === "TRANSFERENCIA" ? false : true,
+      transferRef: usesReference ? String(transferRef || "").trim() : "",
+      reconciled: usesReference ? false : true,
       reconciledAt: null,
       note: note || "",
       createdAt: now(),

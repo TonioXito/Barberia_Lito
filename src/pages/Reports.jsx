@@ -3,7 +3,7 @@ import { Download, Calendar, TrendingUp, Receipt, Package, Landmark, ClipboardCh
 import { useSales } from "../hooks/useData";
 import { useSettings } from "../hooks/useSettings";
 import { setSaleReconciled } from "../firebase/services";
-import { PAYMENT_METHODS, RECONCILIATION_FILTERS } from "../lib/constants";
+import { PAYMENT_METHODS, RECONCILIATION_FILTERS, methodUsesReference } from "../lib/constants";
 import {
   startOfDay,
   startOfWeek,
@@ -41,6 +41,16 @@ export function ReportsPage() {
   const [payment, setPayment] = useState("TODOS");
   const [recon, setRecon] = useState("TODOS");
 
+  const refMethods = useMemo(
+    () =>
+      new Set(
+        PAYMENT_METHODS.filter((m) => methodUsesReference(settings, m.value)).map(
+          (m) => m.value,
+        ),
+      ),
+    [settings],
+  );
+
   const filtered = useMemo(() => {
     let min = null;
     let max = null;
@@ -61,8 +71,12 @@ export function ReportsPage() {
       if (min && t < min) return false;
       if (max && t > max) return false;
       if (payment !== "TODOS" && s.paymentMethod !== payment) return false;
-      if (recon === "SIN_CONCILIAR" && s.reconciled) return false;
-      if (recon === "CONCILIADO" && !s.reconciled) return false;
+      if (s.transferRef) {
+        if (recon === "SIN_CONCILIAR" && s.reconciled) return false;
+        if (recon === "CONCILIADO" && !s.reconciled) return false;
+      } else if (recon !== "TODOS") {
+        return false;
+      }
       return true;
     });
   }, [sales, period, from, to, payment, recon]);
@@ -80,7 +94,9 @@ export function ReportsPage() {
     for (const s of filtered) {
       byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + Number(s.totalUsd || 0);
     }
-    const transfers = filtered.filter((s) => s.paymentMethod === "TRANSFERENCIA");
+    const transfers = filtered.filter(
+      (s) => refMethods.has(s.paymentMethod) && Boolean(s.transferRef),
+    );
     const pendingTransfers = transfers.filter((s) => !s.reconciled);
     const reconcileTotalUsd = transfers.reduce((a, s) => a + Number(s.totalUsd || 0), 0);
     const pendingReconcileUsd = pendingTransfers.reduce((a, s) => a + Number(s.totalUsd || 0), 0);
@@ -97,7 +113,7 @@ export function ReportsPage() {
       reconcileTotalUsd,
       pendingReconcileUsd,
     };
-  }, [filtered]);
+  }, [filtered, refMethods]);
 
   const [reconciling, setReconciling] = useState(null);
 
@@ -105,7 +121,7 @@ export function ReportsPage() {
     setReconciling(id);
     try {
       await setSaleReconciled(id, true);
-      toast.success("Transferencia marcada como conciliada");
+      toast.success("Pago marcado como conciliado");
     } catch (e) {
       toast.error(e.message || "No se pudo conciliar");
     } finally {
@@ -139,7 +155,7 @@ export function ReportsPage() {
         s.clientName || "",
         s.paymentLabel || "",
         s.transferRef || "",
-        s.reconciled ? "SI" : (s.paymentMethod === "TRANSFERENCIA" ? "NO" : ""),
+        s.transferRef ? (s.reconciled ? "SI" : "NO") : "",
         s.subtotalUsd ?? "",
         s.discountUsd ?? "",
         s.totalUsd,
@@ -241,14 +257,14 @@ export function ReportsPage() {
           <div>
             <h3 className="flex items-center gap-2 font-semibold text-gray-900">
               <Landmark size={18} className="text-brand-600" />
-              Conciliación de transferencias
+              Conciliación de pagos
             </h3>
             <p className="text-xs text-gray-500">
-              Verifica en tu banco la transferencia y márcala cuando el pago haya caído.
+              Verifica en tu banco el pago y márcalo cuando haya caído.
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-500">Pendientes</p>
+            <p className="text-xs text-gray-500">Pendientes con referencia</p>
             <p className="flex items-center gap-1 font-bold text-amber-600">
               <ClipboardCheck size={18} />
               {fmtUSD(stats.pendingReconcileUsd)} ({stats.pendingTransfers})
@@ -257,12 +273,14 @@ export function ReportsPage() {
         </div>
         {stats.pendingTransfers === 0 ? (
           <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Sin transferencias pendientes. ¡Todo conciliado!
+            Sin pagos pendientes por conciliar. ¡Todo conciliado!
           </p>
         ) : (
           <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
             {filtered
-              .filter((s) => s.paymentMethod === "TRANSFERENCIA" && !s.reconciled)
+              .filter(
+                (s) => refMethods.has(s.paymentMethod) && !s.reconciled && Boolean(s.transferRef),
+              )
               .slice()
               .sort((a, b) => {
                 const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
@@ -279,7 +297,7 @@ export function ReportsPage() {
                       #{s.ticketNumber} · {s.clientName || "Cliente general"}
                     </p>
                     <p className="text-xs text-gray-500">
-                      Ref: <b>{s.transferRef || "sin referencia"}</b> · {fmtDate(s.createdAt)} {fmtTime(s.createdAt)}
+                      Ref: <b>{s.transferRef}</b> · {fmtDate(s.createdAt)} {fmtTime(s.createdAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -343,19 +361,17 @@ export function ReportsPage() {
                       </p>
                       <p className="text-xs text-gray-400">
                         {fmtDate(s.createdAt)} {fmtTime(s.createdAt)} · {s.paymentLabel}
-                        {s.paymentMethod === "TRANSFERENCIA" &&
-                          (s.transferRef ? ` · Ref: ${s.transferRef}` : " · sin referencia")}
+                        {s.transferRef ? ` · Ref: ${s.transferRef}` : ""}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {s.isCredit && <Badge color="red">Crédito</Badge>}
-                      {s.paymentMethod === "TRANSFERENCIA" && (
-                        s.reconciled ? (
+                      {s.transferRef &&
+                        (s.reconciled ? (
                           <Badge color="green">Conciliado</Badge>
                         ) : (
                           <Badge color="amber">Pendiente</Badge>
-                        )
-                      )}
+                        ))}
                       <span className="font-semibold text-gray-900">{fmtUSD(s.totalUsd)}</span>
                     </div>
                   </div>
