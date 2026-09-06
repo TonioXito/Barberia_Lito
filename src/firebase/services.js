@@ -222,7 +222,7 @@ export async function deleteClientDoc(id) {
 
 let ticketCounter = 1000;
 
-export async function addSale({ client, items, paymentMethod, exchangeRate, discountUsd, note }) {
+export async function addSale({ client, items, paymentMethod, exchangeRate, discountUsd, note, transferRef }) {
   const productsRefById = items.map((it) => ({ it, ref: doc(db, "products", it.productId) }));
 
   const ticketNumber = await getNextTicketNumber();
@@ -284,6 +284,9 @@ export async function addSale({ client, items, paymentMethod, exchangeRate, disc
       isCredit: paymentMethod === "CREDITO",
       creditStatus: paymentMethod === "CREDITO" ? "PENDIENTE" : "CONTADO",
       balanceUsd: roundMoney(balanceUsd),
+      transferRef: paymentMethod === "TRANSFERENCIA" ? String(transferRef || "").trim() : "",
+      reconciled: paymentMethod === "TRANSFERENCIA" ? false : true,
+      reconciledAt: null,
       note: note || "",
       createdAt: now(),
     });
@@ -385,6 +388,14 @@ export async function getAllSales() {
   const q = query(collection(db, "sales"), orderBy("createdAt", "desc"), fireLimit(500));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function setSaleReconciled(saleId, reconciled) {
+  await updateDoc(doc(db, "sales", saleId), {
+    reconciled: !!reconciled,
+    reconciledAt: reconciled ? new Date().toISOString() : null,
+    updatedAt: now(),
+  });
 }
 
 /* ============ CRÉDITO / CUENTAS POR COBRAR ============ */

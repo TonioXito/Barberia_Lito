@@ -40,4 +40,10 @@ export const MOVEMENT_TYPES = [
   { value: "VENTA", label: "Venta" },
 ];
 
+export const RECONCILIATION_FILTERS = [
+  { value: "TODOS", label: "Todos" },
+  { value: "SIN_CONCILIAR", label: "Sin conciliar" },
+  { value: "CONCILIADO", label: "Conciliado" },
+];
+
 export const EMAIL_OWNER = "admin@carniceria.app";

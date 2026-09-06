@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Download, Calendar, TrendingUp, Receipt, Package } from "lucide-react";
+import { Download, Calendar, TrendingUp, Receipt, Package, Landmark, ClipboardCheck, Loader2 } from "lucide-react";
 import { useSales } from "../hooks/useData";
 import { useSettings } from "../hooks/useSettings";
-import { PAYMENT_METHODS } from "../lib/constants";
+import { setSaleReconciled } from "../firebase/services";
+import { PAYMENT_METHODS, RECONCILIATION_FILTERS } from "../lib/constants";
 import {
   startOfDay,
   startOfWeek,
@@ -11,6 +12,7 @@ import {
   fmtBs,
   fmtDate,
   fmtTime,
+  fmtDateTime,
 } from "../lib/format";
 import { useToast } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
@@ -37,6 +39,7 @@ export function ReportsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [payment, setPayment] = useState("TODOS");
+  const [recon, setRecon] = useState("TODOS");
 
   const filtered = useMemo(() => {
     let min = null;
@@ -58,9 +61,11 @@ export function ReportsPage() {
       if (min && t < min) return false;
       if (max && t > max) return false;
       if (payment !== "TODOS" && s.paymentMethod !== payment) return false;
+      if (recon === "SIN_CONCILIAR" && s.reconciled) return false;
+      if (recon === "CONCILIADO" && !s.reconciled) return false;
       return true;
     });
-  }, [sales, period, from, to, payment]);
+  }, [sales, period, from, to, payment, recon]);
 
   const stats = useMemo(() => {
     const totalUsd = filtered.reduce((a, s) => a + Number(s.totalUsd || 0), 0);
@@ -75,8 +80,38 @@ export function ReportsPage() {
     for (const s of filtered) {
       byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + Number(s.totalUsd || 0);
     }
-    return { totalUsd, totalBs, items, avg, credit, byMethod, count: filtered.length };
+    const transfers = filtered.filter((s) => s.paymentMethod === "TRANSFERENCIA");
+    const pendingTransfers = transfers.filter((s) => !s.reconciled);
+    const reconcileTotalUsd = transfers.reduce((a, s) => a + Number(s.totalUsd || 0), 0);
+    const pendingReconcileUsd = pendingTransfers.reduce((a, s) => a + Number(s.totalUsd || 0), 0);
+    return {
+      totalUsd,
+      totalBs,
+      items,
+      avg,
+      credit,
+      byMethod,
+      count: filtered.length,
+      transfers: transfers.length,
+      pendingTransfers: pendingTransfers.length,
+      reconcileTotalUsd,
+      pendingReconcileUsd,
+    };
   }, [filtered]);
+
+  const [reconciling, setReconciling] = useState(null);
+
+  async function markReconciled(id) {
+    setReconciling(id);
+    try {
+      await setSaleReconciled(id, true);
+      toast.success("Transferencia marcada como conciliada");
+    } catch (e) {
+      toast.error(e.message || "No se pudo conciliar");
+    } finally {
+      setReconciling(null);
+    }
+  }
 
   const daily = useMemo(() => {
     if (period === "TODOS") return [];
@@ -97,12 +132,14 @@ export function ReportsPage() {
       return;
     }
     const rows = [
-      ["Ticket", "Fecha", "Cliente", "Metodo", "Subtotal USD", "Descuento USD", "Total USD", "Total Bs", "Saldo USD"],
+      ["Ticket", "Fecha", "Cliente", "Metodo", "Referencia", "Conciliado", "Subtotal USD", "Descuento USD", "Total USD", "Total Bs", "Saldo USD"],
       ...filtered.map((s) => [
         s.ticketNumber,
         fmtDateTime(s.createdAt),
         s.clientName || "",
         s.paymentLabel || "",
+        s.transferRef || "",
+        s.reconciled ? "SI" : (s.paymentMethod === "TRANSFERENCIA" ? "NO" : ""),
         s.subtotalUsd ?? "",
         s.discountUsd ?? "",
         s.totalUsd,
@@ -175,6 +212,19 @@ export function ReportsPage() {
               ))}
             </select>
           </label>
+
+          <label className="block lg:w-48">
+            <span className="mb-1 block text-xs font-medium text-gray-500">Conciliación</span>
+            <select
+              value={recon}
+              onChange={(e) => setRecon(e.target.value)}
+              className="h-9 w-full rounded-lg border border-gray-300 bg-white px-2 text-sm"
+            >
+              {RECONCILIATION_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </Card>
 
@@ -185,6 +235,68 @@ export function ReportsPage() {
         <Stat label="Ticket promedio" value={fmtUSD(stats.avg)} icon={Package} color="bg-purple-500" />
         <Stat label="Por cobrar (crédito)" value={fmtUSD(stats.credit)} icon={Calendar} color="bg-red-500" />
       </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 font-semibold text-gray-900">
+              <Landmark size={18} className="text-brand-600" />
+              Conciliación de transferencias
+            </h3>
+            <p className="text-xs text-gray-500">
+              Verifica en tu banco la transferencia y márcala cuando el pago haya caído.
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Pendientes</p>
+            <p className="flex items-center gap-1 font-bold text-amber-600">
+              <ClipboardCheck size={18} />
+              {fmtUSD(stats.pendingReconcileUsd)} ({stats.pendingTransfers})
+            </p>
+          </div>
+        </div>
+        {stats.pendingTransfers === 0 ? (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Sin transferencias pendientes. ¡Todo conciliado!
+          </p>
+        ) : (
+          <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+            {filtered
+              .filter((s) => s.paymentMethod === "TRANSFERENCIA" && !s.reconciled)
+              .slice()
+              .sort((a, b) => {
+                const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+                const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+                return tb - ta;
+              })
+              .map((s) => (
+                <div
+                  key={`rec-${s.id}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-800">
+                      #{s.ticketNumber} · {s.clientName || "Cliente general"}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Ref: <b>{s.transferRef || "sin referencia"}</b> · {fmtDate(s.createdAt)} {fmtTime(s.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{fmtUSD(s.totalUsd)}</span>
+                    <button
+                      onClick={() => markReconciled(s.id)}
+                      disabled={reconciling === s.id}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {reconciling === s.id ? <Loader2 className="animate-spin" size={14} /> : "Conciliado"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </Card>
 
       {daily.length > 0 && (
         <Card className="p-5">
@@ -223,7 +335,7 @@ export function ReportsPage() {
                 .map((s) => (
                   <div
                     key={s.id}
-                    className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-gray-800">
@@ -231,10 +343,19 @@ export function ReportsPage() {
                       </p>
                       <p className="text-xs text-gray-400">
                         {fmtDate(s.createdAt)} {fmtTime(s.createdAt)} · {s.paymentLabel}
+                        {s.paymentMethod === "TRANSFERENCIA" &&
+                          (s.transferRef ? ` · Ref: ${s.transferRef}` : " · sin referencia")}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {s.isCredit && <Badge color="red">Crédito</Badge>}
+                      {s.paymentMethod === "TRANSFERENCIA" && (
+                        s.reconciled ? (
+                          <Badge color="green">Conciliado</Badge>
+                        ) : (
+                          <Badge color="amber">Pendiente</Badge>
+                        )
+                      )}
                       <span className="font-semibold text-gray-900">{fmtUSD(s.totalUsd)}</span>
                     </div>
                   </div>

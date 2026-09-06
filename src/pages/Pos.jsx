@@ -36,6 +36,7 @@ export function PosPage() {
   const [client, setClient] = useState(null);
   const [clientModal, setClientModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("EFECTIVO");
+  const [transferRef, setTransferRef] = useState("");
   const [discount, setDiscount] = useState("");
   const [saving, setSaving] = useState(false);
   const [ticket, setTicket] = useState(null);
@@ -107,6 +108,10 @@ export function PosPage() {
       setClientModal(true);
       return;
     }
+    if (paymentMethod === "TRANSFERENCIA" && !String(transferRef || "").trim()) {
+      toast.error("Agrega el N° de referencia de la transferencia");
+      return;
+    }
     setSaving(true);
     try {
       const sale = await addSale({
@@ -115,6 +120,7 @@ export function PosPage() {
         paymentMethod,
         exchangeRate: rate,
         discountUsd: totals.discount,
+        transferRef,
       });
       setLastSale(sale);
       setTicket({
@@ -127,6 +133,7 @@ export function PosPage() {
       });
       setCart([]);
       setDiscount("");
+      setTransferRef("");
       setClient(null);
       setPaymentMethod("EFECTIVO");
     } catch (e) {
@@ -372,6 +379,24 @@ export function PosPage() {
                   className="h-8 w-24 rounded-lg border border-gray-300 px-2 text-right text-sm outline-none focus:border-brand-500"
                 />
               </div>
+
+              {paymentMethod === "TRANSFERENCIA" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    N° de referencia de la transferencia
+                  </label>
+                  <input
+                    type="text"
+                    value={transferRef}
+                    onChange={(e) => setTransferRef(e.target.value)}
+                    placeholder="Ej: 8492 7183 5562 9104"
+                    className="h-9 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-brand-500"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Lo usarás en Reportes para conciliar con el banco.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Totales */}
