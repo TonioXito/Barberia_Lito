@@ -40,9 +40,6 @@ export function SettingsPage() {
     setCedula(settings.cedula || "");
     setTelefono(settings.telefono || "");
     setNombre(settings.nombre || "");
-    setSubActive(!!sub.active);
-    setSubCode(sub.code || "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
   async function saveBusiness() {

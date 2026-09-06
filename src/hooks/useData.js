@@ -27,8 +27,13 @@ export function useCollection(subscribe, deps = []) {
       setError(e);
       setLoading(false);
     }
+    const t = setTimeout(() => {
+      setError((prev) => prev || new Error("Se agotó el tiempo de espera"));
+      setLoading(false);
+    }, 20000);
     return () => {
       if (unsub) unsub();
+      clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
