@@ -15,9 +15,14 @@ export function useCollection(subscribe, deps = []) {
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     let unsub = null;
+    const onError = (err) => {
+      setError(err);
+      setLoading(false);
+    };
     try {
-      unsub = subscribe(setData);
+      unsub = subscribe(setData, onError);
     } catch (e) {
       setError(e);
       setLoading(false);
@@ -40,11 +45,11 @@ export function useClients() {
 }
 
 export function useSales() {
-  return useCollection((cb) => onSales(cb, { limit: 500 }));
+  return useCollection((cb, onErr) => onSales(cb, { limit: 500 }, onErr));
 }
 
 export function useMovements() {
-  return useCollection((cb) => onMovements(cb, 200));
+  return useCollection((cb, onErr) => onMovements(cb, 200, onErr));
 }
 
 export function useCreditSales() {

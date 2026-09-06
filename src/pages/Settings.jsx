@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Lock, KeyRound, Loader2, Save, ShieldCheck } from "lucide-react";
+import { Lock, Loader2, Save, ShieldCheck } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
-import { updateSettings, sha256, setSubscriptionStatus, getSubStatus } from "../firebase/services";
+import { updateSettings, sha256, getSubStatus } from "../firebase/services";
 import { useToast } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
@@ -28,10 +28,7 @@ export function SettingsPage() {
   const [confirmPass, setConfirmPass] = useState("");
   const [savingPass, setSavingPass] = useState(false);
 
-  const [subActive, setSubActive] = useState(false);
-  const [subCode, setSubCode] = useState("");
-  const [subDays, setSubDays] = useState("30");
-  const [subSaving, setSubSaving] = useState(false);
+  const subStatus = sub ? getSubStatus(sub) : { ok: false, daysLeft: 0, expired: false };
 
   useEffect(() => {
     if (!settings) return;
@@ -98,34 +95,6 @@ export function SettingsPage() {
       toast.error(err.message || "Error al cambiar contraseña");
     } finally {
       setSavingPass(false);
-    }
-  }
-
-  async function saveSubscription() {
-    setSubSaving(true);
-    try {
-      let expiresAt = sub.expiresAt;
-      if (subActive) {
-        const days = Number(subDays);
-        if (!days || days <= 0) {
-          toast.error("Indica la cantidad de días de la suscripción");
-          return;
-        }
-        const d = new Date();
-        d.setDate(d.getDate() + days);
-        expiresAt = d;
-      }
-      await setSubscriptionStatus({ active: subActive, expiresAt });
-      await updateSettings({ subscription: { ...sub, active: subActive, code: subCode.trim(), expiresAt } });
-      toast.success(
-        subActive
-          ? `Suscripción activada por ${Number(subDays)} días`
-          : "Suscripción desactivada",
-      );
-    } catch (e) {
-      toast.error(e.message);
-    } finally {
-      setSubSaving(false);
     }
   }
 
@@ -255,54 +224,47 @@ export function SettingsPage() {
             title="Suscripción"
             subtitle="Estado de la suscripción de la aplicación"
             action={
-              <Badge color={subActive ? "green" : "red"}>
-                {subActive ? "Activa" : "Inactiva"}
+              <Badge color={subStatus.ok ? "green" : "red"}>
+                {subStatus.ok ? "Activa" : subStatus.expired ? "Expirada" : "Inactiva"}
               </Badge>
             }
           />
           <div className="space-y-3 px-5 pb-5">
-            {subActive && sub.expiresAt && (
+            {subStatus.ok && sub.expiresAt && (
               <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                 Activa · expira el <b>{fmtDate(sub.expiresAt)}</b>
-                {getSubStatus(sub).daysLeft < Infinity &&
-                  ` · ${getSubStatus(sub).daysLeft} día(s) restante(s)`}
+                {subStatus.daysLeft < Infinity &&
+                  ` · ${subStatus.daysLeft} día(s) restante(s)`}
               </p>
             )}
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={subActive}
-                  onChange={(e) => setSubActive(e.target.checked)}
-                  className="h-4 w-4 accent-red-600"
-                />
-                Suscripción activa
-              </label>
-              <Input
-                label="Días de duración"
-                type="number"
-                min="1"
-                value={subDays}
-                onChange={(e) => setSubDays(e.target.value)}
-                className="!h-9 w-28"
-              />
-              <Input
-                label="Código de activación"
-                value={subCode}
-                onChange={(e) => setSubCode(e.target.value)}
-                className="!h-9 w-40"
-              />
-            </div>
-            <p className="text-xs text-gray-400">
-              Al guardar con la casilla activa, se cuenta la suscripción desde hoy por la
-              cantidad de días indicada. El cliente introduce el código en la pantalla de
-              activación para desbloquear el sistema.
+            {subStatus.ok && !sub.expiresAt && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                Activa · sin fecha de vencimiento
+              </p>
+            )}
+            {!subStatus.ok && !subStatus.expired && (
+              <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                La suscripción está desactivada. El sistema pedirá el código de
+                activación al entrar.
+              </p>
+            )}
+            {subStatus.expired && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                La suscripción expiró el <b>{fmtDate(sub.expiresAt)}</b>.
+              </p>
+            )}
+            {sub.code && (
+              <p className="text-xs text-gray-400">
+                Código de activación vigente:{" "}
+                <code className="rounded bg-gray-100 px-1">{sub.code}</code>
+              </p>
+            )}
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Esta información se administra desde Firebase (Firestore →
+              <code className="mx-1 rounded bg-white/70 px-1">settings/config</code> →
+              <code className="mx-1 rounded bg-white/70 px-1">subscription</code>).
+              Allí puedes editar los días o desactivarla.
             </p>
-            <div className="flex justify-end">
-              <Button onClick={saveSubscription} disabled={subSaving} variant="secondary">
-                {subSaving ? <Loader2 className="animate-spin" size={16} /> : <KeyRound size={16} />} Guardar
-              </Button>
-            </div>
           </div>
         </Card>
       </div>

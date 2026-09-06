@@ -76,12 +76,16 @@ export function onSettings(cb, onError) {
 
 /* ============ PRODUCTS ============ */
 
-export function onProducts(cb) {
+export function onProducts(cb, onError) {
   const q = query(collection(db, "products"), orderBy("name"));
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 export async function addProduct(data) {
@@ -109,16 +113,20 @@ export async function toggleProduct(id, active) {
 
 /* ============ MOVEMENTS (inventory) ============ */
 
-export function onMovements(cb, limit = 100) {
+export function onMovements(cb, limit = 100, onError) {
   const q = query(
     collection(db, "movements"),
     orderBy("createdAt", "desc"),
     fireLimit(limit),
   );
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 export async function addMovement({ productId, productName, unit, type, quantity, note }) {
@@ -180,12 +188,16 @@ export async function restockMovement({ productId, productName, unit, quantity, 
 
 /* ============ CLIENTS ============ */
 
-export function onClients(cb) {
+export function onClients(cb, onError) {
   const q = query(collection(db, "clients"), orderBy("name"));
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 export async function addClient({ name, phone, note }) {
@@ -354,15 +366,19 @@ async function getNextTicketNumber() {
   return ticketCounter;
 }
 
-export function onSales(cb, opts = {}) {
+export function onSales(cb, opts = {}, onError) {
   let q = query(collection(db, "sales"), orderBy("createdAt", "desc"), fireLimit(opts.limit || 500));
   if (opts.paymentMethod && opts.paymentMethod !== "TODOS") {
     q = query(q, where("paymentMethod", "==", opts.paymentMethod));
   }
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 export async function getAllSales() {
@@ -373,16 +389,20 @@ export async function getAllSales() {
 
 /* ============ CRÉDITO / CUENTAS POR COBRAR ============ */
 
-export function onCreditSales(cb) {
+export function onCreditSales(cb, onError) {
   const q = query(
     collection(db, "sales"),
     where("isCredit", "==", true),
     orderBy("createdAt", "desc"),
   );
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 export async function registerCreditPayment({ saleId, amountUsd, exchangeRate, method, note }) {
@@ -420,16 +440,20 @@ export async function registerCreditPayment({ saleId, amountUsd, exchangeRate, m
   return result;
 }
 
-export function onCreditPayments(cb) {
+export function onCreditPayments(cb, onError) {
   const q = query(
     collection(db, "credit_payments"),
     orderBy("createdAt", "desc"),
     fireLimit(300),
   );
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    cb(list);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      cb(list);
+    },
+    (err) => onError && onError(err),
+  );
 }
 
 /* ============ SUSCRIPCIÓN Y ACCESO ============ */

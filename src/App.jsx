@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect } from "react";
 import { useAuth } from "./firebase/auth";
 import { useSettings } from "./hooks/useSettings";
 import { Layout } from "./components/Layout";
@@ -17,34 +16,24 @@ import { SettingsPage } from "./pages/Settings";
 import { NotFoundPage } from "./pages/NotFound";
 
 function SubscriptionGate({ children }) {
-  const { settings, error } = useSettings();
-  const [sub, setSub] = useState(null);
-
-  useEffect(() => {
-    if (!settings) return;
-    if (error) {
-      setSub({ error: true });
-      return;
-    }
-    const s = settings.subscription || {};
-    let ok = !!s.active;
-    if (ok && s.expiresAt) {
-      const exp = s.expiresAt?.toDate ? s.expiresAt.toDate() : new Date(s.expiresAt);
-      if (exp < new Date()) ok = false;
-    }
-    setSub({ ok });
-  }, [settings, error]);
-
-  if (!sub) return <PageLoader />;
-  if (sub.error) return <ConfigNotice error={error} />;
-  if (!sub.ok) return <Navigate to="/activacion" replace />;
+  const { settings, error, ready } = useSettings();
+  if (!ready) return <PageLoader />;
+  if (error) return <ConfigNotice error={error} />;
+  const s = settings?.subscription || {};
+  let ok = !!s.active;
+  if (ok && s.expiresAt) {
+    const exp = s.expiresAt?.toDate ? s.expiresAt.toDate() : new Date(s.expiresAt);
+    if (exp < new Date()) ok = false;
+  }
+  if (!ok) return <Navigate to="/activacion" replace />;
   return children;
 }
 
 function Protected({ children }) {
-  const { isAuthed, ready } = useAuth();
+  const { isAuthed, authUser, ready } = useAuth();
   if (!ready) return <PageLoader />;
   if (!isAuthed) return <Navigate to="/login" replace />;
+  if (!authUser) return <PageLoader />;
   return (
     <SubscriptionGate>
       <Layout>{children}</Layout>
@@ -54,9 +43,10 @@ function Protected({ children }) {
 
 // Página de activación: requiere sesión iniciada (no requiere suscripción)
 function AuthOnly({ children }) {
-  const { isAuthed, ready } = useAuth();
+  const { isAuthed, authUser, ready } = useAuth();
   if (!ready) return <PageLoader />;
   if (!isAuthed) return <Navigate to="/login" replace />;
+  if (!authUser) return <PageLoader />;
   return children;
 }
 
