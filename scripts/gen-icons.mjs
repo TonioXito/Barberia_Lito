@@ -7,18 +7,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(__dirname, "..", "public", "icons");
 mkdirSync(OUT, { recursive: true });
 
-const BG_TOP = [239, 68, 68]; // #ef4444
-const BG_BOTTOM = [220, 38, 38]; // #dc2626
-const BONE = [255, 255, 255];
+const BG_TOP = [185, 28, 28]; // #b91c1c
+const BG_BOTTOM = [140, 30, 30]; // granate oscuro
+const MEAT_TOP = [251, 131, 139]; // #fb838b rosa carne
+const MEAT_BOTTOM = [220, 38, 38]; // #dc2626
+const BONE = [255, 244, 230];
+const FAT = [255, 250, 240];
 
-const CAPSULE_R = 0.085;
-const SPINE = { ax: 0.5, ay: 0.34, bx: 0.5, by: 0.6 };
-const RIB = { ax: 0.34, ay: 0.62, bx: 0.64, by: 0.62 };
-const KNUCKLE = { cx: 0.72, cy: 0.62, r: 0.1 };
-
-function clamp01(x) {
-  return Math.max(0, Math.min(1, x));
-}
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
 function distSegment(px, py, ax, ay, bx, by) {
   const vx = bx - ax;
@@ -31,29 +27,67 @@ function distSegment(px, py, ax, ay, bx, by) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function distCapsule(px, py, a, b, r) {
-  return distSegment(px, py, a.ax, a.ay, b.bx, b.by) - r;
+function distCapsule(px, py, ax, ay, bx, by, r) {
+  return distSegment(px, py, ax, ay, bx, by) - r;
 }
 
-function distCircle(px, py, c) {
-  return Math.sqrt((px - c.cx) ** 2 + (py - c.cy) ** 2) - c.r;
+function distCircle(px, py, cx, cy, r) {
+  return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2) - r;
 }
 
-function boneDist(px, py) {
-  const dSpine = distCapsule(px, py, SPINE, SPINE, CAPSULE_R);
-  const dRib = distCapsule(px, py, RIB, RIB, CAPSULE_R);
-  const dKnuckle = distCircle(px, py, KNUCKLE);
-  return Math.min(dSpine, dRib, dKnuckle);
+function distRoundRect(px, py, cx, cy, hw, hh, r) {
+  const qx = Math.abs(px - cx) - (hw - r);
+  const qy = Math.abs(py - cy) - (hh - r);
+  const ox = Math.max(qx, 0);
+  const oy = Math.max(qy, 0);
+  return Math.sqrt(ox * ox + oy * oy) + Math.min(Math.max(qx, qy), 0) - r;
 }
 
-function coverage(px, py, size) {
+/* --- formas del dibujo --- */
+const MEAT = { cx: 0.48, cy: 0.54, hw: 0.27, hh: 0.2, r: 0.14 };
+
+const BONE_SEGS = [
+  { ax: 0.58, ay: 0.3, bx: 0.78, by: 0.42, r: 0.045 },
+  { ax: 0.52, ay: 0.24, bx: 0.66, by: 0.34, r: 0.04 },
+];
+const BONE_BALLS = [
+  { cx: 0.54, cy: 0.26, r: 0.068 },
+  { cx: 0.82, cy: 0.45, r: 0.052 },
+];
+
+const FAT_SEGS = [
+  { ax: 0.34, ay: 0.6, bx: 0.46, by: 0.44, r: 0.02 },
+  { ax: 0.42, ay: 0.66, bx: 0.55, by: 0.5, r: 0.016 },
+  { ax: 0.52, ay: 0.65, bx: 0.67, by: 0.46, r: 0.018 },
+];
+const FAT_BALLS = [
+  { cx: 0.39, cy: 0.54, r: 0.022 },
+  { cx: 0.6, cy: 0.58, r: 0.02 },
+];
+
+let sdfMeat, sdfBone, sdfFat;
+(function build() {
+  const cP = (a) => a;
+  const mSegs = BONE_SEGS.map((s) => (px, py) => distCapsule(px, py, s.ax, s.ay, s.bx, s.by, s.r));
+  const mBalls = BONE_BALLS.map((b) => (px, py) => distCircle(px, py, b.cx, b.cy, b.r));
+  const fSegs = FAT_SEGS.map((s) => (px, py) => distCapsule(px, py, s.ax, s.ay, s.bx, s.by, s.r));
+  const fBalls = FAT_BALLS.map((b) => (px, py) => distCircle(px, py, b.cx, b.cy, b.r));
+  sdfMeat = (px, py) => distRoundRect(px, py, MEAT.cx, MEAT.cy, MEAT.hw, MEAT.hh, MEAT.r);
+  sdfBone = (px, py) =>
+    Math.min(...mSegs.map((f) => f(px, py)), ...mBalls.map((f) => f(px, py)));
+  sdfFat = (px, py) =>
+    Math.min(...fSegs.map((f) => f(px, py)), ...fBalls.map((f) => f(px, py)));
+  cP(0);
+})();
+
+function coverage(px, py, size, sdf) {
   let sum = 0;
   const SS = 3;
   for (let sy = 0; sy < SS; sy++) {
     for (let sx = 0; sx < SS; sx++) {
       const ox = (sx + 0.5) / SS - 0.5;
       const oy = (sy + 0.5) / SS - 0.5;
-      const d = boneDist(px + ox / size, py + oy / size);
+      const d = sdf(px + ox / size, py + oy / size);
       const edge = 1 / size;
       sum += clamp01(0.5 - d / edge);
     }
@@ -62,11 +96,28 @@ function coverage(px, py, size) {
 }
 
 function bgColor(nx, ny) {
-  const t = clamp01(ny * 1.1 - 0.05);
+  const t = clamp01(ny * 0.9);
   return [
     Math.round(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t),
     Math.round(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t),
     Math.round(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t),
+  ];
+}
+
+function meatColor(nx, ny) {
+  const t = clamp01((nx + ny) / 2 - 0.1);
+  return [
+    Math.round(MEAT_TOP[0] + (MEAT_BOTTOM[0] - MEAT_TOP[0]) * t),
+    Math.round(MEAT_TOP[1] + (MEAT_BOTTOM[1] - MEAT_TOP[1]) * t),
+    Math.round(MEAT_TOP[2] + (MEAT_BOTTOM[2] - MEAT_TOP[2]) * t),
+  ];
+}
+
+function blend(a, b, k) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * k),
+    Math.round(a[1] + (b[1] - a[1]) * k),
+    Math.round(a[2] + (b[2] - a[2]) * k),
   ];
 }
 
@@ -80,11 +131,20 @@ function drawIcon(size, scale) {
       const nx = (x + 0.5) / size;
       const u = 0.5 + (nx - 0.5) / scale;
       const v = 0.5 + (ny - 0.5) / scale;
-      const a = coverage(u, v, size);
-      const [r, g, b] = a > 0 ? BONE : bgColor(nx, ny);
-      px[o++] = r;
-      px[o++] = g;
-      px[o++] = b;
+
+      let color = bgColor(nx, ny);
+      const m = coverage(u, v, size, sdfMeat);
+      const b = coverage(u, v, size, sdfBone);
+      const f = coverage(u, v, size, sdfFat);
+
+      if (m > 0) color = meatColor(nx, ny);
+      if (b > 0) color = blend(color, BONE, b);
+      if (f > 0) color = blend(color, FAT, f);
+      if (m > 0 && b > 0 && f > 0) color = blend(FAT, color, 1);
+
+      px[o++] = color[0];
+      px[o++] = color[1];
+      px[o++] = color[2];
       px[o++] = 255;
     }
   }
@@ -117,8 +177,8 @@ function encodePng(size, raw) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // color type RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   const idat = deflateSync(raw);
   return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", Buffer.alloc(0))]);
 }
