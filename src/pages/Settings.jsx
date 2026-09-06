@@ -256,12 +256,6 @@ export function SettingsPage() {
                 <code className="rounded bg-gray-100 px-1">{sub.code}</code>
               </p>
             )}
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Esta información se administra desde Firebase (Firestore →
-              <code className="mx-1 rounded bg-white/70 px-1">settings/config</code> →
-              <code className="mx-1 rounded bg-white/70 px-1">subscription</code>).
-              Allí puedes editar los días o desactivarla.
-            </p>
           </div>
         </Card>
       </div>

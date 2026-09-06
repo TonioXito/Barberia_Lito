@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard,
   ShoppingCart,
   Package,
   BarChart3,
@@ -17,7 +16,6 @@ import { useAuth } from "../firebase/auth";
 import { useSettings } from "../hooks/useSettings";
 
 const NAV = [
-  { to: "/", label: "Inicio", icon: LayoutDashboard, end: true },
   { to: "/pos", label: "Vender", icon: ShoppingCart },
   { to: "/inventario", label: "Inventario", icon: Package },
   { to: "/reportes", label: "Reportes", icon: BarChart3 },

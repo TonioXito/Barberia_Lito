@@ -6,7 +6,6 @@ import { PageLoader } from "./components/ui/Spinner";
 import { ConfigNotice } from "./components/ConfigNotice";
 import { LoginPage } from "./pages/Login";
 import { ActivationPage } from "./pages/Activation";
-import { DashboardPage } from "./pages/Dashboard";
 import { PosPage } from "./pages/Pos";
 import { InventoryPage } from "./pages/Inventory";
 import { ReportsPage } from "./pages/Reports";
@@ -66,7 +65,7 @@ export default function App() {
         path="/"
         element={
           <Protected>
-            <DashboardPage />
+            <PosPage />
           </Protected>
         }
       />
