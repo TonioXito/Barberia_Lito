@@ -434,27 +434,34 @@ export function onCreditPayments(cb) {
 
 /* ============ SUSCRIPCIÓN Y ACCESO ============ */
 
-export async function checkSubscription() {
-  const settings = await getSettings();
-  const sub = settings.subscription || {};
-  if (!sub.active) return { ok: false, settings };
+export function getSubStatus(sub = {}) {
+  if (!sub.active) return { ok: false, daysLeft: 0, expired: false };
   if (sub.expiresAt) {
     const exp = sub.expiresAt.toDate ? sub.expiresAt.toDate() : new Date(sub.expiresAt);
     if (exp < new Date()) {
-      return { ok: false, settings, expired: true };
+      return { ok: false, daysLeft: 0, expired: true };
     }
+    const ms = exp.getTime() - Date.now();
+    return { ok: true, daysLeft: Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24))), expired: false };
   }
-  return { ok: true, settings };
+  return { ok: true, daysLeft: Infinity, expired: false };
 }
 
-export async function activateSubscription(code) {
+export async function checkSubscription() {
+  const settings = await getSettings();
+  const sub = settings.subscription || {};
+  const st = getSubStatus(sub);
+  return { ...st, settings };
+}
+
+export async function activateSubscription(code, days = 365) {
   const settings = await getSettings();
   const sub = settings.subscription || {};
   if (String(code).trim() !== String(sub.code || "").trim()) {
     throw new Error("Código de activación incorrecto");
   }
   const expires = new Date();
-  expires.setFullYear(expires.getFullYear() + 1);
+  expires.setDate(expires.getDate() + Number(days) || 365);
   await updateSettings({
     subscription: {
       ...sub,

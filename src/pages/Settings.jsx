@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Lock, KeyRound, Loader2, Save, ShieldCheck } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
-import { updateSettings, sha256, setSubscriptionStatus } from "../firebase/services";
+import { updateSettings, sha256, setSubscriptionStatus, getSubStatus } from "../firebase/services";
 import { useToast } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
@@ -30,6 +30,7 @@ export function SettingsPage() {
 
   const [subActive, setSubActive] = useState(false);
   const [subCode, setSubCode] = useState("");
+  const [subDays, setSubDays] = useState("30");
   const [subSaving, setSubSaving] = useState(false);
 
   useEffect(() => {
@@ -104,14 +105,23 @@ export function SettingsPage() {
     setSubSaving(true);
     try {
       let expiresAt = sub.expiresAt;
-      if (subActive && !expiresAt) {
+      if (subActive) {
+        const days = Number(subDays);
+        if (!days || days <= 0) {
+          toast.error("Indica la cantidad de días de la suscripción");
+          return;
+        }
         const d = new Date();
-        d.setFullYear(d.getFullYear() + 1);
+        d.setDate(d.getDate() + days);
         expiresAt = d;
       }
       await setSubscriptionStatus({ active: subActive, expiresAt });
       await updateSettings({ subscription: { ...sub, active: subActive, code: subCode.trim(), expiresAt } });
-      toast.success(subActive ? "Suscripción activada" : "Suscripción desactivada");
+      toast.success(
+        subActive
+          ? `Suscripción activada por ${Number(subDays)} días`
+          : "Suscripción desactivada",
+      );
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -251,12 +261,14 @@ export function SettingsPage() {
             }
           />
           <div className="space-y-3 px-5 pb-5">
-            {sub.expiresAt && (
-              <p className="text-sm text-gray-500">
-                Expira: <b>{fmtDate(sub.expiresAt)}</b>
+            {subActive && sub.expiresAt && (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                Activa · expira el <b>{fmtDate(sub.expiresAt)}</b>
+                {getSubStatus(sub).daysLeft < Infinity &&
+                  ` · ${getSubStatus(sub).daysLeft} día(s) restante(s)`}
               </p>
             )}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -267,14 +279,24 @@ export function SettingsPage() {
                 Suscripción activa
               </label>
               <Input
+                label="Días de duración"
+                type="number"
+                min="1"
+                value={subDays}
+                onChange={(e) => setSubDays(e.target.value)}
+                className="!h-9 w-28"
+              />
+              <Input
                 label="Código de activación"
                 value={subCode}
                 onChange={(e) => setSubCode(e.target.value)}
-                className="!h-9"
+                className="!h-9 w-40"
               />
             </div>
             <p className="text-xs text-gray-400">
-              El cliente introduce el código en la pantalla de activación para desbloquear el sistema.
+              Al guardar con la casilla activa, se cuenta la suscripción desde hoy por la
+              cantidad de días indicada. El cliente introduce el código en la pantalla de
+              activación para desbloquear el sistema.
             </p>
             <div className="flex justify-end">
               <Button onClick={saveSubscription} disabled={subSaving} variant="secondary">
